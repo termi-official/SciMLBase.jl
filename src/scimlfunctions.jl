@@ -550,8 +550,8 @@ M \frac{du}{dt} = f(u,p,t)
 as a partitioned ODE:
 
 ```math
-M_1 \frac{du}{dt} = f_1(u,p,t)
-M_2 \frac{du}{dt} = f_2(u,p,t)
+M_1 \frac{du_1}{dt} = f_1(u,p,t) = f_1(u_1,u_2,p,t)
+M_2 \frac{du_2}{dt} = f_2(u,p,t) = f_2(u_1,u_2,p,t)
 ```
 
 and all of its related functions, such as the Jacobian of `f`, its gradient
@@ -562,17 +562,17 @@ with respect to time, and more. For all cases, `u0` is the initial condition,
 
 ```julia
 DynamicalODEFunction{iip,specialize}(f1,f2;
-                                    mass_matrix = __has_mass_matrix(f) ? f.mass_matrix : I,
-                                    analytic = __has_analytic(f) ? f.analytic : nothing,
-                                    tgrad= __has_tgrad(f) ? f.tgrad : nothing,
-                                    jac = __has_jac(f) ? f.jac : nothing,
-                                    jvp = __has_jvp(f) ? f.jvp : nothing,
-                                    vjp = __has_vjp(f) ? f.vjp : nothing,
-                                    jac_prototype = __has_jac_prototype(f) ? f.jac_prototype : nothing,
-                                    sparsity = __has_sparsity(f) ? f.sparsity : jac_prototype,
-                                    paramjac = __has_paramjac(f) ? f.paramjac : nothing,
-                                    colorvec = __has_colorvec(f) ? f.colorvec : nothing,
-                                    sys = __has_sys(f) ? f.sys : nothing)
+                                    mass_matrix = __get_dynamical_ode_mass_matrix(f1,f2),
+                                    analytic = nothing,
+                                    tgrad = nothing,
+                                    jac = nothing,
+                                    jvp = nothing,
+                                    vjp = nothing,
+                                    jac_prototype = nothing,
+                                    sparsity = jac_prototype,
+                                    paramjac = nothing,
+                                    colorvec = nothing,
+                                    sys = nothing)
 ```
 
 Note that only the functions `f_i` themselves are required. These functions should
@@ -2673,12 +2673,12 @@ function SplitFunction{iip}(f1, f2; kwargs...) where {iip}
 end
 SplitFunction(f::SplitFunction; kwargs...) = f
 
-@add_kwonly function DynamicalODEFunction{iip}(f1, f2, mass_matrix, analytic, tgrad, jac,
+@add_kwonly function DynamicalODEFunction{iip}(f1, f2, mass_matrix::Tuple, analytic, tgrad, jac,
         jvp, vjp, jac_prototype, sparsity, Wfact,
         Wfact_t, paramjac,
         observed, colorvec, sys) where {iip}
-    f1 = f1 isa AbstractSciMLOperator ? f1 : ODEFunction(f1)
-    f2 = ODEFunction(f2)
+    f1 = f1 isa AbstractSciMLOperator ? f1 : ODEFunction(f1; mass_matrix=mass_matrix[1])#, jac=jac[1,1], ...)
+    f2 = ODEFunction(f2; mass_matrix=mass_matrix[2])#, jac=jac[2,2], ...)
 
     if isinplace(f1) != isinplace(f2)
         throw(NonconformingFunctionsError(["f2"]))
@@ -2697,31 +2697,48 @@ SplitFunction(f::SplitFunction; kwargs...) = f
 end
 
 function DynamicalODEFunction{iip, specialize}(f1, f2;
-        mass_matrix = __has_mass_matrix(f1) ?
-                      f1.mass_matrix : I,
-        analytic = __has_analytic(f1) ? f1.analytic :
-                   nothing,
-        tgrad = __has_tgrad(f1) ? f1.tgrad : nothing,
-        jac = __has_jac(f1) ? f1.jac : nothing,
-        jvp = __has_jvp(f1) ? f1.jvp : nothing,
-        vjp = __has_vjp(f1) ? f1.vjp : nothing,
-        jac_prototype = __has_jac_prototype(f1) ?
-                        f1.jac_prototype : nothing,
-        sparsity = __has_sparsity(f1) ? f1.sparsity :
-                   jac_prototype,
-        Wfact = __has_Wfact(f1) ? f1.Wfact : nothing,
-        Wfact_t = __has_Wfact_t(f1) ? f1.Wfact_t :
-                  nothing,
-        paramjac = __has_paramjac(f1) ? f1.paramjac :
-                   nothing,
+        # mass_matrix = __has_mass_matrix(f1) ?
+        #               f1.mass_matrix : I,
+        # analytic = __has_analytic(f1) ? f1.analytic :
+        #            nothing,
+        # tgrad = __has_tgrad(f1) ? f1.tgrad : nothing,
+        # jac = __has_jac(f1) ? f1.jac : nothing,
+        # jvp = __has_jvp(f1) ? f1.jvp : nothing,
+        # vjp = __has_vjp(f1) ? f1.vjp : nothing,
+        # jac_prototype = __has_jac_prototype(f1) ?
+        #                 f1.jac_prototype : nothing,
+        # sparsity = __has_sparsity(f1) ? f1.sparsity :
+        #            jac_prototype,
+        # Wfact = __has_Wfact(f1) ? f1.Wfact : nothing,
+        # Wfact_t = __has_Wfact_t(f1) ? f1.Wfact_t :
+        #           nothing,
+        # paramjac = __has_paramjac(f1) ? f1.paramjac :
+        #            nothing,
+        # syms = nothing,
+        # indepsym = nothing,
+        # paramsyms = nothing,
+        # observed = __has_observed(f1) ? f1.observed :
+        #            DEFAULT_OBSERVED,
+        # colorvec = __has_colorvec(f1) ? f1.colorvec :
+        #            nothing,
+        # sys = __has_sys(f1) ? f1.sys : nothing) where {
+        mass_matrix = __get_dynamical_ode_mass_matrix(f1, f2),
+        analytic =  nothing,
+        tgrad = nothing,
+        jac = nothing,
+        jvp = nothing,
+        vjp = nothing,
+        jac_prototype = nothing,
+        sparsity = jac_prototype,
+        Wfact = nothing,
+        Wfact_t = nothing,
+        paramjac = nothing,
         syms = nothing,
         indepsym = nothing,
         paramsyms = nothing,
-        observed = __has_observed(f1) ? f1.observed :
-                   DEFAULT_OBSERVED,
-        colorvec = __has_colorvec(f1) ? f1.colorvec :
-                   nothing,
-        sys = __has_sys(f1) ? f1.sys : nothing) where {
+        observed = DEFAULT_OBSERVED,
+        colorvec = nothing,
+        sys = nothing) where {
         iip,
         specialize
 }
@@ -2760,6 +2777,12 @@ function DynamicalODEFunction{iip}(f1, f2; kwargs...) where {iip}
         ODEFunction{iip}(f2); kwargs...)
 end
 DynamicalODEFunction(f::DynamicalODEFunction; kwargs...) = f
+
+function __get_dynamical_ode_mass_matrix(f1,f2)
+    f1m = __has_mass_matrix(f1) ? f1.mass_matrix : I
+    f2m = __has_mass_matrix(f2) ? f2.mass_matrix : I
+    return (f1m, f2m)
+end
 
 function DiscreteFunction{iip, specialize}(f;
         analytic = __has_analytic(f) ? f.analytic :
